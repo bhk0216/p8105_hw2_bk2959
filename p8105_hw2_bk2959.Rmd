@@ -1,0 +1,81 @@
+---
+title: "p8105_hw2_bk2959"
+author: "Stella Koo"
+date: "2024-09-24"
+output: github_document
+---
+
+## Problem 1
+```{r message = FALSE}
+library(tidyverse)
+```
+
+```{r message = FALSE}
+nyc_subway_df = read_csv("./nyc_transit_subway.csv", na = c("")) |>
+  janitor::clean_names() |>
+  select(line:route11, entry, vending, entrance_type, ada) |>
+  mutate(entry = ifelse(entry == "YES", TRUE, FALSE),
+         route8 = as.character(route8),
+         route9 = as.character(route9),
+         route10 = as.character(route10),
+         route11 = as.character(route11)
+  )
+
+nyc_subway_df
+```
+
+The dataset contains information about subway stations in NYC with a wide range of variables: line, station name, station latitude and longitude, routes served, entry, vending, entrance type, and ADA compliance. It has `r nrow(nyc_subway_df)` rows and `r ncol(nyc_subway_df)` columns. 
+
+These data are not tidy because there are many repeating observations: there are multiple entries for the same station (e.g., 25th St and 36th St) with different entrance locations, which creates redundancy. The dataset also has multiple route columns (Route1, Route2, etc.), but not all rows have data for every route. This results in a wide data structure where many cells are empty. 
+
+* **Data Import:** `read_csv()` was used to import the CSV file into R as a tibble.
+* **Column Cleaning:** `janitor::clean_names()` was applied to clean and standardize the column names.
+* **Column Selection:** `select()` was utilized to choose specific columns from the dataset and organize them in the desired order.
+* **Data Transformation:** `mutate()` and `ifelse()` were used to convert `entry` variable from character type (YES and NO) to logical variable (TRUE and FALSE). The columns `route8` to `route11` were converted to character variable to maintain consistency with other route columns.
+
+```{r}
+distinct_stations = distinct(nyc_subway_df, station_name, ada)
+total_distinct_stations = nrow(distinct_stations)
+ada_compliant_stations = nrow(filter(distinct_stations, ada == TRUE))
+
+no_vending = filter(nyc_subway_df, vending == "NO")
+total_no_vending = nrow(no_vending)
+allow_entrance = nrow(filter(no_vending, entry == TRUE))
+proportion_allow_entrance = round(allow_entrance/total_no_vending, 3)
+```
+
+There are `r total_distinct_stations` distinct stations. 
+`r ada_compliant_stations` stations are ADA compliant.
+The proportion of station entrances without vending that allow entrance is `r proportion_allow_entrance`. 
+
+```{r}
+nyc_subway_tidy = 
+  pivot_longer(
+    nyc_subway_df,
+    cols = route1:route11,
+    names_to = "route_number",
+    values_to = "route_name"
+  ) |>
+  drop_na(route_name)
+
+nyc_subway_tidy
+```
+
+```{r}
+a_train_stations = 
+  nyc_subway_tidy |>
+  filter(route_name == "A") |>
+  distinct(station_name, ada)
+
+total_a_train = nrow(a_train_stations)
+
+a_train_ada = 
+  a_train_stations |>
+  filter(ada == TRUE) |>
+  nrow()
+```
+
+The A train serves `r total_a_train` different stations. Of the stations that serve the A train, `r a_train_ada` are ADA compliant.
+
+## Problem 2
+
