@@ -6,6 +6,7 @@ output: github_document
 ---
 
 ## Problem 1
+### Data Cleaning
 ```{r message = FALSE}
 library(tidyverse)
 options(scipen = 999)
@@ -35,6 +36,7 @@ These data are not tidy because there are many repeating observations: there are
 * **Column Selection:** `select()` was utilized to choose specific columns from the dataset and organize them in the desired order.
 * **Data Transformation:** `mutate()` and `ifelse()` were used to convert `entry` variable from character type (YES and NO) to logical variable (TRUE and FALSE). The columns `route8` to `route11` were converted to character variable to maintain consistency with other route columns.
 
+### Answers to Questions
 ```{r}
 distinct_stations = distinct(nyc_subway_df, station_name, ada)
 total_distinct_stations = nrow(distinct_stations)
@@ -50,6 +52,7 @@ There are `r total_distinct_stations` distinct stations.
 `r ada_compliant_stations` stations are ADA compliant.
 The proportion of station entrances without vending that allow entrance is `r proportion_allow_entrance`. 
 
+##### Reformatted data: route number and route name as distinct variables
 ```{r}
 nyc_subway_tidy = 
   pivot_longer(
@@ -80,6 +83,7 @@ a_train_ada =
 The A train serves `r total_a_train` different stations. Of the stations that serve the A train, `r a_train_ada` are ADA compliant.
 
 ## Problem 2
+### Data Cleaning
 ```{r}
 library(readxl)
 
@@ -116,6 +120,7 @@ gwynnda_trash_wheel =
          year = as.integer(year))
 ```
 
+### Combined Dataset
 ```{r}
 combined_trash_wheel = 
   bind_rows(mr_trash_wheel, professor_trash_wheel, gwynnda_trash_wheel)
@@ -127,6 +132,7 @@ This dataset documents the collections from various trash wheels (Mr. Trash Whee
 * **Composition Analysis (`plastic_bottles`, `polystyrene`, etc):** A breakdown of the materials found in each dumpster, including specific categories such as plastic bottles, polystyrene, cigarettes, and other waste types.
 * **Energy Metrics (`homes_powered`):** It also includes information on the energy generated from the waste collected, measured in kilowatts (kW). 
 
+### Total Weight of Trash
 ```{r}
 total_weight_professor = 
   professor_trash_wheel |>
@@ -142,5 +148,80 @@ june2022_cigarette_gwynnda =
 The total weight of trash collected by Professor Trash Wheel is `r total_weight_professor`.
 The total number of cigarette butts collected by Gwynnda in June of 2022 is `r june2022_cigarette_gwynnda`.
 
+## Problem 3
+### Data Cleaning
+The datasets `bakers.csv`, `bakes.csv`, and `results.csv` were imported into this R project using the `read_csv()` function. Column names were standardized across all datasets using `janitor::clean_names()` to ensure consistency. Several columns were also reorganized and renamed to facilitate seamless joins during the data cleaning process:
 
+* `bakers_df`: The bakers' names were split into separate `first_name` and `last_name` columns to align with other datasets, which only contain first names. Additionally, the age and occupation columns were renamed to avoid redundancy.
+* `bakers_df` and `results_df`: The column containing the bakers' names was renamed to `first_name` to maintain uniformity across all three datasets.
 
+```{r message = FALSE}
+bakers_df = 
+  read_csv("./gbb_datasets/bakers.csv", na = c("NA")) |>
+  janitor::clean_names() |>
+  separate(baker_name, into = c("first_name", "last_name"), sep = " ") |>
+  rename(age = baker_age, occupation = baker_occupation)
+
+bakes_df = 
+  read_csv("./gbb_datasets/bakes.csv", na = c("NA")) |>
+  janitor::clean_names() |>
+  rename(first_name = baker) 
+
+results_df = 
+  read_csv("./gbb_datasets/results.csv", na = c("NA"), skip = 2) |>
+  janitor::clean_names() |>
+  rename(first_name = baker) 
+```
+
+### Joining Datasets
+Before merging the datasets, it is essential to verify both completeness and accuracy across them in order to determine the appropriate type of join and ensure that the final dataset retains only the relevant data. The `anti_join()` function was employed to identify discrepancies between datasets: 
+
+* `missing_bakers`: Identifies bakes listed in `bakes_df` that are not linked to any known baker in `bakers_df`. This check helps highlight instances where bakes are recorded without a corresponding baker. 
+* `missing_bakes`: Displays entries from `results_df` that lack a corresponding bake in `bakes_df`. This check is useful for detecting episodes where results were recorded, but no bakes were logged in the dataset.
+
+```{r}
+missing_bakers = anti_join(bakes_df, bakers_df, by = c("first_name", "series"))
+missing_bakes = anti_join(results_df, bakes_df, by = c("first_name", "series", "episode"))
+
+missing_bakers 
+missing_bakes
+```
+
+The previous checks reveal several instances of missing data across the datasets. The choice of join depends on the goals of the analysis, as different join types will retain or exclude specific data. For this assignment, I opted to use `full_join()` to merge all datasets, ensuring that all information is included, even when some data is missing. For example, if a baker is marked as STAR BAKER in an episode but their bake information is absent, using `full_join()` guarantees that this result is still captured, providing a comprehensive view of the available data.
+
+```{r}
+bake_off_df = bakers_df |>
+  full_join(bakes_df, by = c("first_name", "series")) |>
+  full_join(results_df, by = c("first_name", "series", "episode")) |>
+  select(series, episode, first_name, last_name, everything()) |>
+  arrange(series, episode)
+
+write_csv(bake_off_df, "bake_off_df.csv")
+```
+
+The final dataset consists of `r nrow(bake_off_df)` rows and `r ncol(bake_off_df)` columns, providing a comprehensive overview of the baking results, including all bakers, bakes, and their corresponding results. While some missing values remain, the dataset is structured to support further analysis.
+
+### STAR BAKER and WINNERS
+The table below presents the STAR BAKER or WINNER for each episode in Seasons 5 through 10.
+From Seasons 5 to 8, all relevant data for the selected columns are consistently recorded. However, there are significant gaps in data for Seasons 9 and 10, particularly for columns such as `last_name`, `age`, `occupation`, and `signature_bake`. This suggests that data tracking has been unsuccessful since Season 9.
+
+Many names appear repeatedly as STAR BAKER across multiple episodes, indicating that these individuals have won multiple times. Notably, in most seasons, these bakers have also been crowned the WINNER in the final episode (episode 10). However, there are instances where the WINNER was an unexpected choice. For example, in Season 10, while Steph was recognized as STAR BAKER in several episodes, David was declared the WINNER despite not having been a STAR BAKER in any of the previous episodes.
+
+```{r}
+bake_off_winners = bake_off_df |>
+  filter(series >= 5, result == "STAR BAKER" | result == "WINNER") |>
+  select(series:first_name, last_name, age, occupation, signature_bake, result)
+
+bake_off_winners
+```
+
+### Viewership Dataset
+```{r}
+viewers_df =
+  read_csv("./gbb_datasets/viewers.csv", na = c("NA"), show_col_types = FALSE) |> 
+  janitor::clean_names()
+
+head(viewers_df, 10)
+```
+
+The average viewership in Season 1 is `r round(mean(pull(viewers_df, series_1), na.rm = TRUE), 2)` and in Season 5 is `r round(mean(pull(viewers_df, series_5), na.rm = TRUE), 2)`.
